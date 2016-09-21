@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+  <head>
+        <title>Paris and its velibs</title>
+        <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.css" />
+        <script src="http://cdn.leafletjs.com/leaflet-0.7.2/leaflet.js"></script>
+        <script src="http://code.jquery.com/jquery-1.10.2.min.js"></script>
+        <script src='https://api.mapbox.com/mapbox.js/v2.4.0/mapbox.js'></script>
+		<link href='https://api.mapbox.com/mapbox.js/v2.4.0/mapbox.css' rel='stylesheet' />
+	    
+	    <!-- Latest compiled and minified CSS -->
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+	    <!-- <script src="http://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"> -->
+
+	    <script type="text/javascript"></script>
+	    <script src="leaflet-heat.js"></script>
+
+	    </script>
+	    <script src="https://d3js.org/d3.v4.min.js"></script>
+
+        <style>
+        body {padding: 0; margin: 5% }
+        html, body, #map { height: 100% }
+
+        #map {
+
+        }
+        .info {
+		    padding: 6px 8px;
+		    font: 14px/16px Arial, Helvetica, sans-serif;
+		    background: white;
+		    background: rgba(255,255,255,0.8);
+		    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+		    border-radius: 5px;
+		}
+		.info h4{
+		    margin: 0 0 5px;
+		}
+
+        </style>
+  </head>
+
+
+  <body>
+
+  	<div class='container'>
+	  	<header id='title'>
+	  		<h1>6 days of velibs in Paris</h1>
+	  	</header>
+
+	  	<div class="row">
+			<div id='map' class="col-md-2" align="left" style='width: 600px; height: 400px;'></div>
+		</div>
+	</div>
+
+<script>
+	L.mapbox.accessToken = 'pk.eyJ1IjoibGFldGl0aWFqdSIsImEiOiJjaXIwejZ0ZzcwMnR6ZmttZ2F3MGF2OTl4In0.ul3mi7cLnNjbHb6auxlvMw';
+	var map = L.map('map').setView([48.858563, 2.334269], 12);
+
+	// Add tiles from Mapbox Style API (https://www.mapbox.com/developers/api/styles/)
+	// Tiles are 512x512 pixels and are offset by 1 zoom level
+	L.tileLayer(
+	    'https://api.mapbox.com/styles/v1/laetitiaju/cirpqvbh6000ch3m260qe4h72/tiles/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
+	        tileSize: 512,
+	        zoomOffset: -1,
+	        attribution: '© <a href="https://www.mapbox.com/map-feedback/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    var info = L.control();
+
+	info.onAdd = function (map) {
+	    this._div = L.DomUtil.create('div', 'info'); // create a div with a class "info"
+	    this.update();
+	    return this._div;
+	};
+
+	// method that we will use to update the control based on feature properties passed
+	info.update = function (ds) {
+	    this._div.innerHTML = '<h4>Density of velibs</h4>' +  (ds ?
+	        '<b>' + ds + '</b><br />' : 'Data is loading');
+	};
+
+	info.addTo(map);
+
+
+	function draw(data) {
+		var format = d3.timeParse("%Y-%m-%d %H:%M:%S");
+
+        var svg = d3.select(map.getPanes().overlayPane).append("svg"),
+            g = svg.append("g").attr("class", "leaflet-zoom-hide");
+
+
+		d3.json("data/stations.json", function(error, root){
+	        
+			var pos = root[1].position
+			pos = pos.replace("u'lng'",'"lng"');
+			pos = pos.replace("u'lat'",'"lat"');
+			var pos2 =JSON.parse(pos);
+			
+			var arrayAll = new Array();
+			var update_ds = new Array();
+
+			for(var i = 0; i<data.length; i++) {
+
+				var array = new Array();
+				var update = JSON.parse(data[i].values);
+				update_ds.push(data[i].last_update);
+
+				var maxVal = 0;
+					var position = root.forEach(function(station) {
+						
+						var station_update = $.grep(update, function(element) {
+							return element.number === station.number
+						});
+
+						var available_bikes = station_update[0].available_bikes
+
+						var ratio_available_bikes = available_bikes/station_update[0].bike_stands
+						var val = ratio_available_bikes*100;
+						maxVal = Math.max(val, maxVal);
+
+						var pos = station.position;
+						pos = pos.replace("u'lng'",'"lng"');
+						pos = pos.replace("u'lat'",'"lat"');
+
+						pos =JSON.parse(pos);
+						array.push([pos.lat, pos.lng, val]);
+
+					});
+	
+
+					var heat = L.heatLayer(array, {
+						radius: 7,
+						blur: 15,
+			            maxZoom: 17,
+			            gradient: {
+						      0: '#2988BC',
+						      0.5: '#F4EADE',
+						      1: '#ED8C72'
+						}
+			        })
+
+					arrayAll.push(heat)
+			}
+			console.log(arrayAll)
+			function loopUpdates() {
+
+				setTimeout(function() { 
+					/*console.log(arrayAll[up])*/
+					if(up >= 1) {
+						map.removeLayer(arrayAll[up-1]);
+					}
+					
+					arrayAll[up].addTo(map);
+					info.update(update_ds[up]);
+
+			        up++;
+
+			        if (up < data.length) {
+			        	loopUpdates();
+			        }
+		        }, 60);  
+
+			};
+			var up = 0;
+			loopUpdates()
+
+		});
+	}
+	d3.json("data/all_days_updates_nested.json", draw);
+
+</script>
+        
+ </body>
+</html>
+
+
+
+
+
